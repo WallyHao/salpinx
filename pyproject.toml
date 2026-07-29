@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "waliwuao" }]
+authors = [{ name = "WallyHao", email = "WallyHao@qq.com" }]
 keywords = ["zenoh", "pub-sub", "rpc", "annotations"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/waliwuao/salpinx"
-Issues = "https://github.com/waliwuao/salpinx/issues"
+Repository = "https://github.com/WallyHao/salpinx"
+Issues = "https://github.com/WallyHao/salpinx/issues"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-cov>=7.1.0"]
