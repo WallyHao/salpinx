@@ -120,9 +120,8 @@ def add(a: int, b: int) -> int:
 
 The decorated function becomes a zenoh queryable. When a query arrives:
 
-1. The query payload (msgpack body) is deserialized. If it is a dict, each
-   key is matched to a function parameter. If it is a scalar and the function
-   has a single parameter named `payload`, the scalar is assigned to it.
+1. The query payload is deserialized as a msgpack dict. Each key is matched
+   to a function parameter by name.
 2. The function is called with those parameters.
 3. The return value is serialized (msgpack by default) and sent as a reply.
 
@@ -138,18 +137,6 @@ def translate(text: str, target: str = "en") -> str:
 ```
 
 Optional parameters with defaults are supported.
-
-### Payload-based Service
-
-```python
-@spx.serve("echo")
-def echo(payload: str) -> str:
-    return f"Echo: {payload}"
-```
-
-When the request body is a scalar value (not a dict) and the function has
-a parameter named `payload`, the raw deserialized value is passed directly
-instead of being matched by key name.
 
 ### Error Handling
 
@@ -176,14 +163,6 @@ results = spx.request("math/add", a=1, b=2)
 Sends a query to the given key expression. Keyword arguments are serialized
 as a msgpack dict in the query body. Waits for and returns a list of all
 successful replies.
-
-If a single kwarg named `payload` is given, its value is serialized directly
-as the body:
-
-```python
-results = spx.request("echo", payload="hello")
-# results → ["Echo: hello"]
-```
 
 Errors from the service side are raised as `spx.ServiceError`.
 
