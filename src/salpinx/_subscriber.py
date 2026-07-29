@@ -49,12 +49,12 @@ def subscribe(
                 if ann is not None:
                     target_type = None if ann is Message else ann
 
-        from salpinx._session import _pending_subscribers, _session
+        import salpinx._session
 
         wrapped = _make_callback(fn, target_type)
 
-        if _session is None:
-            _pending_subscribers.append((key_expr, wrapped))
+        if salpinx._session._session is None:
+            salpinx._session._pending_subscribers.append((key_expr, wrapped))
         else:
             _register_subscriber(key_expr, wrapped)
 

@@ -14,10 +14,10 @@ def serve(key_expr: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator: register a function as a queryable at *key_expr*."""
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        from salpinx._session import _pending_services, _session
+        import salpinx._session
 
-        if _session is None:
-            _pending_services.append((key_expr, fn))
+        if salpinx._session._session is None:
+            salpinx._session._pending_services.append((key_expr, fn))
         else:
             _register_service(key_expr, fn)
         return fn

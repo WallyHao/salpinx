@@ -47,13 +47,15 @@ class Requester:
             return self._querier
         from salpinx._session import _get_session
 
-        self._querier = _get_session().declare_querier(self._key_expr)
+        self._querier = _get_session().declare_querier(
+            self._key_expr, timeout=self._timeout
+        )
         return self._querier
 
     def __call__(self, **kwargs: Any) -> list[Any]:
         querier = self._ensure_querier()
         body = msgpack.dumps(kwargs)
-        replies = querier.get(payload=body, timeout=self._timeout)
+        replies = querier.get(payload=body)
 
         results: list[Any] = []
         for reply in replies:

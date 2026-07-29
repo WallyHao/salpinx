@@ -81,6 +81,8 @@ convention = "google"
     "EM101",
     "ARG005",
 ]
+"src/salpinx/_subscriber.py" = ["SLF001"]
+"src/salpinx/_serve.py" = ["SLF001"]
 
 [tool.ruff.format]
 quote-style = "double"
