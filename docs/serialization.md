@@ -27,7 +27,7 @@ Note: `tuple` is serialized as `list` and deserialized back as `list` (not
 ## Dataclass Support (Zero Configuration)
 
 Dataclasses and named tuples are automatically serialized by converting them
-to dicts via `vars(obj)` / `asdict(obj)`:
+to dicts via `vars(obj)` / `asdict(obj)`.
 
 ```python
 from dataclasses import dataclass
@@ -41,6 +41,12 @@ class RobotPose:
 # Publish — dataclass → dict → msgpack
 spx.put("robot/pose", RobotPose(1.0, 2.0, 0.5))
 ```
+
+Only one level of dataclass nesting is supported. If a dataclass field is
+itself a dataclass, the nested instance is also converted to a dict
+recursively. However, deserialization back to the nested dataclass type is
+not automatic — only the top-level type annotation on the subscriber
+callback is used for restoration.
 
 ### Type Restoration on Subscribe
 

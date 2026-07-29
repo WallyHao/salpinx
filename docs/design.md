@@ -23,12 +23,13 @@ import salpinx as spx
 spx.run()
 ```
 
-`spx.run()` initializes a global zenoh session and blocks until interrupted
-(typically via Ctrl-C). All decorations (`@spx.subscribe`, `@spx.serve`, etc.)
-register against this implicit session.
+`spx.run()` is the mandatory entry point. It creates a global zenoh session,
+registers all previously declared subscribers and services, and blocks until
+interrupted (typically via Ctrl-C).
 
-There is no need to call `spx.init()` — the session is lazily created on
-first use and finalized by `spx.run()`.
+All salpinx API calls (`spx.publisher`, `@spx.subscribe`, `@spx.serve`,
+`spx.put`, `spx.request`, etc.) must be made **before** `spx.run()`. The
+session is created at the start of `spx.run()` and destroyed when it returns.
 
 ## Publishing
 
@@ -119,8 +120,9 @@ def add(a: int, b: int) -> int:
 
 The decorated function becomes a zenoh queryable. When a query arrives:
 
-1. Function parameters are extracted from query parameters (e.g.
-   `math/add?a=1&b=2` → `a=1, b=2`).
+1. The query payload (msgpack body) is deserialized. If it is a dict, each
+   key is matched to a function parameter. If it is a scalar and the function
+   has a single parameter named `payload`, the scalar is assigned to it.
 2. The function is called with those parameters.
 3. The return value is serialized (msgpack by default) and sent as a reply.
 
@@ -141,12 +143,13 @@ Optional parameters with defaults are supported.
 
 ```python
 @spx.serve("echo")
-def echo(body: str) -> str:
-    return f"Echo: {body}"
+def echo(payload: str) -> str:
+    return f"Echo: {payload}"
 ```
 
-If a parameter is named `body`, salpinx maps the query payload (not query
-parameters) to it.
+When the request body is a scalar value (not a dict) and the function has
+a parameter named `payload`, the raw deserialized value is passed directly
+instead of being matched by key name.
 
 ### Error Handling
 
@@ -166,12 +169,21 @@ zenoh error replies and raised as `spx.ServiceError` on the requester side.
 ### Single Request
 
 ```python
-result = spx.request("math/add", a=1, b=2)
-# result → 3
+results = spx.request("math/add", a=1, b=2)
+# results → [3]
 ```
 
-Sends a query to the given key expression with keyword arguments packed as
-query parameters. Waits for and returns the first successful reply.
+Sends a query to the given key expression. Keyword arguments are serialized
+as a msgpack dict in the query body. Waits for and returns a list of all
+successful replies.
+
+If a single kwarg named `payload` is given, its value is serialized directly
+as the body:
+
+```python
+results = spx.request("echo", payload="hello")
+# results → ["Echo: hello"]
+```
 
 Errors from the service side are raised as `spx.ServiceError`.
 
@@ -179,8 +191,8 @@ Errors from the service side are raised as `spx.ServiceError`.
 
 ```python
 add = spx.requester("math/add")
-result = add(a=1, b=2)
-# result → 3
+results = add(a=1, b=2)
+# results → [3]
 ```
 
 `spx.requester(key)` returns a callable object that can be invoked multiple
@@ -189,7 +201,7 @@ times. This avoids re-declaring the querier for every call.
 ### Timeout
 
 ```python
-result = spx.request("slow/service", a=1, b=2, timeout=2.0)
+results = spx.request("slow/service", a=1, b=2, timeout=2.0)
 ```
 
 The `timeout` parameter (in seconds) limits how long the request waits for a
@@ -221,11 +233,11 @@ def on_pose(pose: Pose):
 def add(a: int, b: int) -> int:
     return a + b
 
-# Do some work before spinning
+# Do some work before spin
 temp_pub(25.3)
 pose_pub(Pose(1.0, 2.0))
-result = spx.request("math/add", a=1, b=2)
-print(result)
+results = spx.request("math/add", a=1, b=2)
+print(results)
 
 spx.run()
 ```
