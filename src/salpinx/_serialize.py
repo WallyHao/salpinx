@@ -32,7 +32,7 @@ def decode(data: bytes, target_type: type | None = None) -> Any:
 
 def _msgpack_default(obj: Any) -> Any:
     if isinstance(obj, datetime.datetime):
-        return msgpack.ExtType(-1, obj.isoformat().encode())
+        return obj.isoformat()
     msg = f"Cannot serialize type {type(obj)}"
     raise TypeError(msg)
 
