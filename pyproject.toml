@@ -75,10 +75,12 @@ convention = "google"
     "PLR2004",
     "T20",
     "D1",
+    "SLF001",
+    "PT019",
+    "TRY003",
+    "EM101",
+    "ARG005",
 ]
-
-[tool.ruff.lint.isort]
-required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.format]
 quote-style = "double"
