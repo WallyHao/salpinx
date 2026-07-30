@@ -27,7 +27,7 @@ Note: `tuple` is serialized as `list` and deserialized back as `list` (not
 ## Dataclass Support (Zero Configuration)
 
 Dataclasses and named tuples are automatically serialized by converting them
-to dicts via `vars(obj)` / `asdict(obj)`.
+to dicts via `dataclasses.fields()` / `getattr()`.
 
 ```python
 from dataclasses import dataclass
@@ -42,11 +42,10 @@ class RobotPose:
 spx.put("robot/pose", RobotPose(1.0, 2.0, 0.5))
 ```
 
-Only one level of dataclass nesting is supported. If a dataclass field is
-itself a dataclass, the nested instance is also converted to a dict
-recursively. However, deserialization back to the nested dataclass type is
-not automatic — only the top-level type annotation on the subscriber
-callback is used for restoration.
+Nested dataclasses are supported: if a dataclass field is itself a dataclass,
+the nested instance is also converted to a dict recursively. However,
+deserialization back to the nested dataclass type is not automatic — only the
+top-level type annotation on the subscriber callback is used for restoration.
 
 ### Type Restoration on Subscribe
 
@@ -76,22 +75,20 @@ If no type annotation is present, the payload is deserialized as a plain
 | `dataclass` | `dict` → `cls(**data)` |
 | No annotation | Raw `dict` |
 
-## Encoding Override
+## Encoding and Decoding Options
 
-For debugging or interoperability, the encoding can be switched to JSON:
+The `decode` parameter of `@spx.subscribe` can be used to override the
+automatic type inference:
 
 ```python
-# Publish as JSON
-spx.publisher("sensor/temp", encode="json")(25.3)
-
-# Subscribe with explicit JSON decoding
-@spx.subscribe("sensor/temp", decode="json")
+# Subscribe with explicit decoding
+@spx.subscribe("sensor/temp", decode=int)
 def on_temp(temp: float):
     ...
 ```
 
-Available encoding values: `"msgpack"` (default), `"json"`, `"raw"` (bytes
-passthrough).
+When `decode` is specified it takes precedence over the callback's type
+annotation.
 
 ## Encoded Key Expressions
 
@@ -99,14 +96,31 @@ The serialization format is communicated in the zenoh message's `encoding`
 metadata field:
 
 - Default: `application/msgpack`
-- JSON mode: `application/json`
-- Raw mode: `application/octet-stream`
 
 This allows non-salpinx zenoh clients to inspect the wire format and decode
 messages correctly.
 
 ## Error Handling
 
-If deserialization fails (e.g., the payload is corrupted or the type does not
-match), a `spx.DeserializationError` is raised in the subscriber callback
-context. It is up to the application to handle or log such errors.
+All serialization errors are raised as `spx.SerializationError`, which
+includes the problematic type:
+
+```python
+try:
+    spx.put("sensor/x", some_unknown_object)
+except spx.SerializationError as e:
+    print(e)             # "Failed to encode data for put() to [sensor/x]: ..."
+    print(e.value_type)  # <class '__main__.Custom'>
+```
+
+Dataclass reconstruction failures include detailed field mismatch information:
+
+```python
+# Missing required fields
+# → "Failed to reconstruct Point; missing fields: {'y'}"
+# Extra unexpected fields
+# → "Failed to reconstruct Point; unexpected fields: {'color'}"
+```
+
+The underlying exception (e.g., `TypeError` from messagepack) is always
+chained via `__cause__`, preserving the full exception chain for debugging.

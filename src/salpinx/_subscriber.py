@@ -3,9 +3,29 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import typing
 from collections.abc import Callable
 from typing import Any
+
+_logger = logging.getLogger("salpinx.subscriber")
+
+# Global error handler for subscriber callbacks
+_error_handler: Callable[[Exception, str], None] | None = None
+
+
+def set_error_handler(
+    handler: Callable[[Exception, str], None] | None,
+) -> None:
+    """Set a global error handler for subscriber callback exceptions.
+
+    When a subscriber callback raises an exception, *handler* is called
+    with the exception and the key expression that triggered it.
+    Set to ``None`` to restore the default behaviour (log to
+    ``salpinx.subscriber`` logger at ERROR level).
+    """
+    global _error_handler  # noqa: PLW0603
+    _error_handler = handler
 
 
 class Message:
@@ -51,7 +71,7 @@ def subscribe(
 
         import salpinx._session
 
-        wrapped = _make_callback(fn, target_type)
+        wrapped = _make_callback(fn, target_type, key_expr)
 
         if salpinx._session._session is None:
             salpinx._session._pending_subscribers.append((key_expr, wrapped))
@@ -85,6 +105,7 @@ def _get_type_hints(fn: Callable[..., Any]) -> dict[str, Any]:
 def _make_callback(
     fn: Callable[..., Any],
     target_type: type | None,
+    key_expr: str,
 ) -> Callable[..., Any]:
     from salpinx._serialize import decode
 
@@ -97,9 +118,15 @@ def _make_callback(
                 raw = sample.payload.to_bytes()
                 payload = decode(raw, target_type)
             return fn(payload)
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
+        except Exception as exc:
+            if _error_handler is not None:
+                _error_handler(exc, key_expr)
+            else:
+                _logger.error(
+                    "Unhandled error in subscriber callback %r " "for key %r",
+                    fn.__name__,
+                    key_expr,
+                    exc_info=True,
+                )
 
     return handler

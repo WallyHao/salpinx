@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import msgpack
 import pytest
 
+from salpinx._errors import SerializationError
 from salpinx._serialize import decode, encode
 
 
@@ -141,5 +142,53 @@ def test_encode_unsupported_type_raises():
     class Custom:
         pass
 
-    with pytest.raises(TypeError):
+    with pytest.raises(SerializationError, match="Failed to encode"):
         encode(Custom())
+
+
+def test_decode_dataclass_field_mismatch():
+    @dataclass
+    class Strict:
+        name: str
+        value: float
+
+    data = encode({"name": "test"})
+    with pytest.raises(SerializationError, match="missing fields"):
+        decode(data, Strict)
+
+    data = encode({"name": "test", "value": 1.0, "extra": True})
+    with pytest.raises(SerializationError, match="unexpected fields"):
+        decode(data, Strict)
+
+
+def test_decode_error_wraps_msgpack_error():
+    with pytest.raises(SerializationError, match="Failed to decode"):
+        decode(b"\xff\xfe\xfd", target_type=int)
+
+
+def test_encode_error_wraps_msgpack_error():
+    with pytest.raises(SerializationError, match="Failed to encode"):
+        encode(object())
+
+
+@dataclass
+class Outer:
+    inner: Point
+    label: str
+
+
+def test_encode_nested_dataclass():
+    o = Outer(inner=Point(3.0, 4.0), label="outer")
+    data = encode(o)
+    result = msgpack.loads(data)
+    assert result == {"inner": {"x": 3.0, "y": 4.0}, "label": "outer"}
+
+
+def test_decode_dataclass_non_dict_fallback():
+    @dataclass
+    class Dummy:
+        x: int
+
+    data = encode(42)
+    result = decode(data, Dummy)
+    assert result == 42

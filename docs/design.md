@@ -14,6 +14,8 @@ publish, subscribe, serve, and request.
   for dataclasses and built-in types. See [Serialization](serialization.md).
 - **Convention over configuration**: Sensible defaults that can be overridden
   when needed.
+- **Errors never swallowed**: Every error is either propagated, logged, or
+  delivered through an explicit handler callback. No silent failures.
 
 ## Session
 
@@ -25,11 +27,24 @@ spx.run()
 
 `spx.run()` is the mandatory entry point. It creates a global zenoh session,
 registers all previously declared subscribers and services, and blocks until
-interrupted (typically via Ctrl-C).
+interrupted (via Ctrl-C or `spx.stop()`).
 
 All salpinx API calls (`spx.publisher`, `@spx.subscribe`, `@spx.serve`,
 `spx.put`, `spx.request`, etc.) must be made **before** `spx.run()`. The
 session is created at the start of `spx.run()` and destroyed when it returns.
+
+### Session Lifecycle
+
+```python
+spx.close()  # immediately tear down the session
+spx.stop()   # signal spx.run() to exit gracefully
+```
+
+`spx.stop()` sets an internal flag that causes `spx.run()` to exit its
+blocking loop. This is useful for programmatic shutdown from another thread.
+
+`spx.close()` immediately tears down the session, releasing all resources.
+This is always called as part of the cleanup in `spx.run()`.
 
 ## Publishing
 
@@ -110,6 +125,22 @@ def on_pose(pose: RobotPose):
 The payload is automatically deserialized into a `RobotPose` instance using
 the type annotation on the callback parameter.
 
+### Subscriber Error Handling
+
+Exceptions raised inside a subscriber callback are **never silently swallowed**.
+By default they are logged at ERROR level to the `salpinx.subscriber` logger.
+For custom handling, register a callback:
+
+```python
+def on_error(exc: Exception, key: str) -> None:
+    print(f"Subscriber on {key} failed: {exc}")
+
+spx.set_error_handler(on_error)
+```
+
+The handler receives both the exception and the key expression. Call
+`spx.set_error_handler(None)` to restore the default logging behaviour.
+
 ## Serving (Queryable)
 
 ```python
@@ -150,6 +181,26 @@ def divide(a: float, b: float) -> float:
 
 Exceptions raised inside a service function are automatically converted to
 zenoh error replies and raised as `spx.ServiceError` on the requester side.
+The error reply includes:
+- The exception message
+- The full Python traceback from the service side
+- The key expression and handler function name
+
+The requester receives all of this context in the `spx.ServiceError`:
+
+```python
+try:
+    spx.request("math/div", a=1, b=0)
+except spx.ServiceError as e:
+    print(e)                   # [math/div] division by zero (+ remote traceback)
+    print(e.service_traceback) # traceback from the service process
+    print(e.results)           # [42, 7] — replies collected before the error
+    print(e.key_expr)          # math/div
+```
+
+Partial results are preserved on a best-effort basis: if multiple replies
+arrive and one is an error, previously collected successful replies are
+accessible via `e.results`.
 
 ## Requesting (Query)
 
@@ -164,7 +215,15 @@ Sends a query to the given key expression. Keyword arguments are serialized
 as a msgpack dict in the query body. Waits for and returns a list of all
 successful replies.
 
-Errors from the service side are raised as `spx.ServiceError`.
+### Error Handling
+
+```python
+try:
+    results = spx.request("math/div", a=1, b=0)
+except spx.ServiceError as e:
+    # e carries: .service_traceback, .results, .key_expr
+    print(f"Service error: {e}")
+```
 
 ### Reusable Requester
 

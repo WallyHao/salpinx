@@ -29,6 +29,8 @@ decorators and calls must be made **before** `spx.run()`.
 | Subscribe | `@spx.subscribe(key)` | Receive data via a decorated callback |
 | Serve | `@spx.serve(key)` | Expose a function as a queryable service |
 | Request | `spx.request(key, **kwargs)` / `spx.requester(key)` | Query a service and get replies |
+| Lifecycle | `spx.run()` / `spx.stop()` / `spx.close()` | Session management |
+| Errors | `spx.set_error_handler(fn)` | Subscriber error callback |
 
 ## Publishing
 
@@ -119,6 +121,26 @@ def on_any(msg: spx.Message):
 Key expressions support zenoh wildcards: `*` matches any single segment,
 `**` matches zero or more segments.
 
+### Subscriber Error Handling
+
+By default, exceptions raised inside a subscriber callback are logged at
+ERROR level to the ``salpinx.subscriber`` logger. To capture errors
+programmatically, register a custom handler:
+
+```python
+import logging
+logging.getLogger("salpinx.subscriber").setLevel(logging.ERROR)
+
+# or use a custom callback
+def on_subscriber_error(exc: Exception, key: str) -> None:
+    sentry.capture_exception(exc, extra={"key": key})
+
+spx.set_error_handler(on_subscriber_error)
+```
+
+The handler receives the exception and the key expression that triggered it.
+Pass ``None`` to restore the default logging behaviour.
+
 ## Serving (Queryable)
 
 ```python
@@ -155,8 +177,19 @@ def divide(a: float, b: float) -> float:
 ```
 
 Exceptions raised inside a service function are automatically converted to
-zenoh error replies. On the requester side, they are raised as
-`spx.ServiceError`.
+zenoh error replies. On the requester side they are raised as
+`spx.ServiceError`, which carries the remote traceback and any partially
+collected results:
+
+```python
+try:
+    spx.request("math/div", a=1, b=0)
+except spx.ServiceError as e:
+    print(e)                   # [math/div] division by zero
+    print(e.service_traceback) # remote traceback from the service side
+    print(e.results)           # partially successful replies (if any)
+    print(e.key_expr)          # the key expression that failed
+```
 
 ## Requesting (Query)
 
@@ -183,11 +216,17 @@ This avoids re-declaring the querier for each call.
 
 ### Error Handling
 
+When a service returns an error, `spx.request()` raises `spx.ServiceError`.
+The exception includes the remote traceback for debugging:
+
 ```python
 try:
     spx.request("math/div", a=1, b=0)
 except spx.ServiceError as e:
     print(f"Service error: {e}")
+    # e.service_traceback  — remote traceback from the service
+    # e.results             — any responses collected before the error
+    # e.key_expr            — the key expression queried
 ```
 
 ### Timeout
@@ -241,19 +280,38 @@ No registration or configuration is required.
 ## Entry Point
 
 ```python
-spx.run()    # blocks until Ctrl-C
+spx.run()     # blocks until Ctrl-C or spx.stop()
 ```
 
 `spx.run()` is the **mandatory** entry point. It creates the global zenoh
 session, registers all declared subscribers and services, and blocks until
 interrupted. All salpinx API calls must happen **before** `spx.run()`.
 
+For graceful programmatic shutdown, call `spx.stop()` from another thread:
+
+```python
+import threading
+
+def shutdown_after(seconds: float) -> None:
+    import time
+    time.sleep(seconds)
+    spx.stop()
+
+threading.Thread(target=shutdown_after, args=(10,), daemon=True).start()
+spx.run()
+```
+
+`spx.close()` immediately tears down the session without waiting on the run loop.
+
 ## Full Example
 
 ```python
+import logging
 import salpinx as spx
 from dataclasses import dataclass
 
+# Enable subscriber error logging
+logging.getLogger("salpinx.subscriber").setLevel(logging.ERROR)
 
 @dataclass
 class Pose:

@@ -51,7 +51,14 @@ def _register_service(key_expr: str, fn: Callable[..., Any]) -> None:
             query.reply(key_expr, reply_payload)
         except Exception as exc:
             tb = traceback.format_exc()
-            err_payload = msgpack.dumps({"error": str(exc), "traceback": tb})
+            err_payload = msgpack.dumps(
+                {
+                    "error": str(exc),
+                    "traceback": tb,
+                    "key_expr": key_expr,
+                    "handler": fn.__name__,
+                }
+            )
             query.reply_err(err_payload)
         finally:
             query.drop()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Callable
 from typing import Any
 
@@ -12,6 +11,7 @@ import zenoh
 # Global state
 _session: zenoh.Session | None = None
 _lock = threading.Lock()
+_stop_event = threading.Event()
 
 # Deferred registrations (before session exists)
 _pending_subscribers: list[tuple[str, Callable[..., Any]]] = []
@@ -45,20 +45,25 @@ def _flush_pending() -> None:
     _pending_services.clear()
 
 
-def run() -> None:
-    _get_session()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        close()
+def stop() -> None:
+    """Signal the run loop to exit gracefully."""
+    _stop_event.set()
 
 
 def close() -> None:
     global _session  # noqa: PLW0603
     with _lock:
         if _session is not None:
-            _session.close()
+            _session.close()  # type: ignore[no-untyped-call]
             _session = None
+
+
+def run() -> None:
+    """Create the session and block until Ctrl-C or :func:`stop`."""
+    _get_session()
+    try:
+        _stop_event.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        close()

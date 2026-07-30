@@ -9,6 +9,32 @@ import msgpack
 from salpinx._errors import ServiceError
 
 
+def _collect_replies(
+    replies: Any,
+    key_expr: str,
+) -> list[Any]:
+    results: list[Any] = []
+    for reply in replies:
+        if reply.ok is not None:
+            try:
+                results.append(msgpack.loads(reply.ok.payload.to_bytes()))
+            except Exception as exc:
+                msg = f"Failed to decode successful reply from [{key_expr}]"
+                raise ServiceError(msg, results=results, key_expr=key_expr) from exc
+        elif reply.err is not None:
+            try:
+                err_data = msgpack.loads(reply.err.payload.to_bytes())
+            except Exception:
+                err_data = {"error": "Unknown service error (unable to decode)"}
+            raise ServiceError(
+                err_data.get("error", "Unknown service error"),
+                service_traceback=err_data.get("traceback"),
+                results=results,
+                key_expr=key_expr,
+            )
+    return results
+
+
 def request(
     key_expr: str,
     *,
@@ -22,16 +48,7 @@ def request(
     body = msgpack.dumps(kwargs)
 
     replies = session.get(key_expr, payload=body, timeout=timeout)
-
-    results: list[Any] = []
-    for reply in replies:
-        if reply.ok is not None:
-            results.append(msgpack.loads(reply.ok.payload.to_bytes()))
-        elif reply.err is not None:
-            err_data = msgpack.loads(reply.err.payload.to_bytes())
-            raise ServiceError(err_data.get("error", "Unknown service error"))
-
-    return results
+    return _collect_replies(replies, key_expr)
 
 
 class Requester:
@@ -56,16 +73,7 @@ class Requester:
         querier = self._ensure_querier()
         body = msgpack.dumps(kwargs)
         replies = querier.get(payload=body)
-
-        results: list[Any] = []
-        for reply in replies:
-            if reply.ok is not None:
-                results.append(msgpack.loads(reply.ok.payload.to_bytes()))
-            elif reply.err is not None:
-                err_data = msgpack.loads(reply.err.payload.to_bytes())
-                raise ServiceError(err_data.get("error", "Unknown service error"))
-
-        return results
+        return _collect_replies(replies, self._key_expr)
 
 
 def requester(key_expr: str, *, timeout: float | None = None) -> Requester:

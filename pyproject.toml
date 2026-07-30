@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "salpinx"
-version = "0.1.1"
+version = "0.2.0"
 description = "Annotation-style pub/sub and service/request for zenoh"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -103,6 +103,7 @@ enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
+disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
 module = ["msgpack", "zenoh"]
